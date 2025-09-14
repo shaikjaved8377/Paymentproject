@@ -2,6 +2,7 @@ package payment
 
 import (
 	"database/sql"
+	"payment/model"
 
 	"github.com/IBM/sarama"
 )
@@ -15,6 +16,6 @@ type bizlogic struct {
 	Producer sarama.SyncProducer
 }
 
-func NewBizLogic(db *sql.DB) *bizlogic { //producer sarama.SyncProducer) *bizlogic {
-	return &bizlogic{DB: db} //Producer: producer}
+func NewBizLogic(db *sql.DB, producer sarama.SyncProducer) *bizlogic {
+	return &bizlogic{DB: db, Producer: producer}
 }
