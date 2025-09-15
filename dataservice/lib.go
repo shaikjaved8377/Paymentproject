@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-
 type PaymentRow struct {
 	ID                     string
 	OrderID                string
@@ -19,9 +18,8 @@ type PaymentRow struct {
 	UpdatedAt              time.Time
 }
 
-
 func InitDB(ctx context.Context, db *sql.DB) error {
-	
+
 	if _, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS payments (
   id                       VARCHAR(64) PRIMARY KEY,
@@ -40,7 +38,20 @@ CREATE TABLE IF NOT EXISTS payments (
 		return err
 	}
 
-	// 2) idempotency (optional but handy)
+	// refunds table (records each refund)
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS refunds (
+  id            BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  payment_id    VARCHAR(64) NOT NULL,
+  amount_cents  BIGINT NOT NULL,
+  created_at    DATETIME NOT NULL,
+  INDEX(payment_id),
+  FOREIGN KEY (payment_id) REFERENCES payments(id)
+)`); err != nil {
+		return err
+	}
+
+	// 2) idempotency
 	if _, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   k             VARCHAR(128) NOT NULL,
@@ -52,7 +63,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 		return err
 	}
 
-	// 3) order sequence (for auto ORD-1, ORD-2, ...)
+	// 3) order sequence
 	if _, err := db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS order_seq (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY
@@ -63,7 +74,6 @@ CREATE TABLE IF NOT EXISTS order_seq (
 	return nil
 }
 
-// NextOrderSeq inserts a row into order_seq and returns the AUTO_INCREMENT id.
 func NextOrderSeq(ctx context.Context, db *sql.DB) (int64, error) {
 	res, err := db.ExecContext(ctx, `INSERT INTO order_seq () VALUES ()`)
 	if err != nil {
@@ -72,7 +82,6 @@ func NextOrderSeq(ctx context.Context, db *sql.DB) (int64, error) {
 	return res.LastInsertId()
 }
 
-// InsertPayment saves one authorized payment row.
 func InsertPayment(ctx context.Context, db *sql.DB, p PaymentRow) error {
 	_, err := db.ExecContext(ctx, `
 INSERT INTO payments
@@ -91,7 +100,6 @@ VALUES
 	)
 	return err
 }
-
 
 func GetIdempotency(ctx context.Context, db *sql.DB, key, endpoint string) (string, bool, error) {
 	var resp string

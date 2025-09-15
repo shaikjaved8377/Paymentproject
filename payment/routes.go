@@ -11,6 +11,11 @@ func RegisterRoutes(mux *http.ServeMux, db *sql.DB, producer sarama.SyncProducer
 	svc := NewService(db, producer, topic)
 	h := NewHandler(svc)
 
-	
 	mux.HandleFunc("/v1/payments/authorize", h.Authorize())
+
+}
+func RefundRoutes(db *sql.DB, producer sarama.SyncProducer) {
+	rh := NewRefundHandler(db, producer)
+	http.HandleFunc("/v1/payments/refund", rh.RefundHandler())
+
 }

@@ -16,11 +16,6 @@ type AuthorizeResponse struct {
 	AuthorizationExpiresAt time.Time `json:"authorization_expires_at"`
 }
 
-type RefundResponse struct {
-	PaymentID string `json:"payment_id"`
-	Status    string `json:"status"`
-}
-
 type Payment struct {
 	ID                     string
 	OrderID                string
@@ -32,4 +27,15 @@ type Payment struct {
 	CapturedAmountCents    int64
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
+}
+
+type RefundReq struct {
+	PaymentID string `json:"payment_id"`
+}
+
+type RefundResponse struct {
+	RefundID            int64  `json:"refund_id"`
+	PaymentID           string `json:"payment_id"`
+	RefundedAmountCents int64  `json:"refunded_amount_cents"`
+	Status              string `json:"status"`
 }
