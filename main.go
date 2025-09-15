@@ -16,7 +16,7 @@ import (
 
 func main() {
 	
-	dsn := "root:Srikar@1930@tcp(localhost:3306)/payments?parseTime=true&multiStatements=true"
+	dsn := "root:password@tcp(localhost:3306)/payments?parseTime=true&multiStatements=true"
 
 	
 	db, err := sql.Open("mysql", dsn)
