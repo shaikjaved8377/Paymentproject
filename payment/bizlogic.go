@@ -22,15 +22,6 @@ type Service struct {
 	TopicAuthzed string
 }
 
-type bizlogic struct {
-	DB       *sql.DB
-	Producer sarama.SyncProducer
-}
-
-func NewBizLogic(db *sql.DB) *bizlogic {
-	return &bizlogic{DB: db}
-}
-
 func NewService(db *sql.DB, producer sarama.SyncProducer, topic string) *Service {
 	return &Service{DB: db, Producer: producer, TopicAuthzed: topic}
 }
@@ -54,7 +45,7 @@ func (s *Service) Authorize(ctx context.Context, req model.AuthorizeRequest) (mo
 	now := time.Now().UTC()
 	expires := now.Add(7 * 24 * time.Hour)
 
-	// Auto-generate order_id if missing: ORD-<n>
+	// Auto-generate
 	orderID := strings.TrimSpace(req.OrderID)
 	if orderID == "" {
 		n, err := dataservice.NextOrderSeq(ctx, s.DB)
@@ -119,4 +110,84 @@ func (s *Service) Authorize(ctx context.Context, req model.AuthorizeRequest) (mo
 	}
 
 	return resp, nil
+}
+
+type IbizLogic interface {
+	RefundPaymentLogic(paymentID string) (model.RefundResponse, error)
+}
+
+type bizlogic struct {
+	DB       *sql.DB
+	Producer sarama.SyncProducer
+}
+
+func NewBizLogic(db *sql.DB, producer sarama.SyncProducer) *bizlogic {
+	return &bizlogic{DB: db, Producer: producer}
+}
+
+func (bl *bizlogic) RefundPaymentLogic(paymentID string) (model.RefundResponse, error) {
+	var out model.RefundResponse
+
+	res, err := bl.DB.Exec(`
+        UPDATE payments
+        SET status = 'refunded', updated_at = NOW()
+        WHERE id = ? AND status = 'captured'
+    `, paymentID)
+	if err != nil {
+		return out, err
+	}
+	aff, _ := res.RowsAffected()
+	if aff == 0 {
+
+		return out, fmt.Errorf("payment not eligible for refund")
+	}
+
+	// 2) Insert
+	res2, err := bl.DB.Exec(`
+        INSERT INTO refunds (payment_id, amount_cents, created_at)
+        SELECT id, captured_amount_cents, NOW()
+        FROM payments
+        WHERE id = ?
+    `, paymentID)
+	if err != nil {
+		return out, err
+	}
+	refundID, _ := res2.LastInsertId()
+
+	// 3) Read
+	var amount int64
+	if err := bl.DB.QueryRow(`SELECT captured_amount_cents FROM payments WHERE id = ?`, paymentID).
+		Scan(&amount); err != nil {
+		return out, err
+	}
+
+	out = model.RefundResponse{
+		RefundID:            refundID,
+		PaymentID:           paymentID,
+		RefundedAmountCents: amount,
+		Status:              "refunded",
+	}
+
+	if bl.Producer != nil {
+		ev := struct {
+			Type       string `json:"type"`
+			PaymentID  string `json:"payment_id"`
+			Amount     int64  `json:"amount_cents"`
+			Status     string `json:"status"`
+			OccurredAt string `json:"occurred_at"`
+		}{
+			Type:       "payment.refunded",
+			PaymentID:  paymentID,
+			Amount:     amount,
+			Status:     "refunded",
+			OccurredAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		b, _ := json.Marshal(ev)
+		_, _, _ = bl.Producer.SendMessage(&sarama.ProducerMessage{
+			Topic: "payments_refunded",
+			Value: sarama.ByteEncoder(b),
+		})
+	}
+
+	return out, nil
 }
