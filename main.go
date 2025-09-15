@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -8,11 +9,16 @@ import (
 
 	"github.com/IBM/sarama"
 	_ "github.com/go-sql-driver/mysql"
+
+	"payment/dataservice"
+	"payment/payment"
 )
 
 func main() {
-	dsn := "username:password@tcp(localhost:3306)/sys?parseTime=true"
+	
+	dsn := "root:Srikar@1930@tcp(localhost:3306)/payments?parseTime=true&multiStatements=true"
 
+	
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
@@ -22,15 +28,26 @@ func main() {
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
+
+	
+	if err := dataservice.InitDB(context.Background(), db); err != nil {
+		log.Fatal("init db:", err)
+	}
+
+	
 	producer, err := initkafkaproducer()
 	if err != nil {
 		log.Fatalf("Failed to initialize Kafka producer: %v", err)
 	}
 	defer producer.Close()
 
-	fmt.Println("Connected to the database successfully!")
+	
+	const topicAuthorized = "payments_authorized"
+	payment.RegisterRoutes(http.DefaultServeMux, db, producer, topicAuthorized)
 
+	fmt.Println("Connected to the database successfully!")
 	log.Println("Starting the server on port 8080...")
+	
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -39,7 +56,7 @@ func initkafkaproducer() (sarama.SyncProducer, error) {
 	config := sarama.NewConfig()
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
+	config.Producer.Return.Successes = true 
 	producer, err := sarama.NewSyncProducer(brokerlist, config)
 	if err != nil {
 		return nil, err
