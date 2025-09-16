@@ -17,7 +17,7 @@ import (
 func main() {
 
 	//dsn := "root:password@tcp(localhost:3306)/payments?parseTime=true&multiStatements=true"
-	dsn := "root:Javed@786@tcp(localhost:3306)/sys?parseTime=true"
+	dsn := "root:Sadala@385@tcp(localhost:3306)/sys?parseTime=true"
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -42,6 +42,7 @@ func main() {
 	const topicAuthorized = "payments_authorized"
 	payment.RegisterRoutes(http.DefaultServeMux, db, producer, topicAuthorized)
 	payment.RefundRoutes(db, producer)
+	payment.CaptureRoutes(db, producer)
 
 	fmt.Println("Connected to the database successfully!")
 	log.Println("Starting the server on port 8080...")
