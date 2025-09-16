@@ -38,6 +38,34 @@ func (h *Handler) Authorize() http.HandlerFunc {
 	}
 
 }
+func NewCaptureHandler(db *sql.DB, producer sarama.SyncProducer) *Handler {
+	return &Handler{biz: NewBizLogic(db, producer)}
+}
+
+func (h *Handler) CaptureHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req model.CaptureRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PaymentID == "" {
+			http.Error(w, "invalid json or payment_id", http.StatusBadRequest)
+			return
+		}
+
+		resp, err := h.biz.CapturePaymentLogic(req.PaymentID, req.AmountCents)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+            return
+        }
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+}
 
 func NewRefundHandler(db *sql.DB, producer sarama.SyncProducer) *Handler {
 	return &Handler{biz: NewBizLogic(db, producer)}

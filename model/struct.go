@@ -15,6 +15,16 @@ type AuthorizeResponse struct {
 	Status                 string    `json:"status"`
 	AuthorizationExpiresAt time.Time `json:"authorization_expires_at"`
 }
+type CaptureRequest struct {
+	PaymentID   string `json:"payment_id"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
+type CaptureResponse struct {
+	PaymentID           string `json:"payment_id"`
+	CapturedAmountCents int64  `json:"captured_amount_cents"`
+	Status              string `json:"status"`
+}
 
 type Payment struct {
 	ID                     string

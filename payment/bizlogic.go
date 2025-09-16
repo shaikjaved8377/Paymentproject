@@ -113,6 +113,7 @@ func (s *Service) Authorize(ctx context.Context, req model.AuthorizeRequest) (mo
 }
 
 type IbizLogic interface {
+	CapturePaymentLogic(paymentID string, amount int64) (model.CaptureResponse, error)
 	RefundPaymentLogic(paymentID string) (model.RefundResponse, error)
 }
 
@@ -123,6 +124,56 @@ type bizlogic struct {
 
 func NewBizLogic(db *sql.DB, producer sarama.SyncProducer) *bizlogic {
 	return &bizlogic{DB: db, Producer: producer}
+}
+
+func (bl *bizlogic) CapturePaymentLogic(paymentID string, amount int64) (model.CaptureResponse, error) {
+	var out model.CaptureResponse
+
+	// Update captured amount and status
+	res, err := bl.DB.Exec(`
+		UPDATE payments
+		SET status = 'captured',
+		    captured_amount_cents = ?,
+		    updated_at = NOW()
+		WHERE id = ? AND status = 'authorized'
+	`, amount, paymentID)
+	if err != nil {
+		return out, err
+	}
+	aff, _ := res.RowsAffected()
+	if aff == 0 {
+		return out, fmt.Errorf("payment not eligible for capture")
+	}
+
+	out = model.CaptureResponse{
+		PaymentID:           paymentID,
+		CapturedAmountCents: amount,
+		Status:              "captured",
+	}
+
+	// Kafka event
+	if bl.Producer != nil {
+		ev := struct {
+			Type       string `json:"type"`
+			PaymentID  string `json:"payment_id"`
+			Amount     int64  `json:"amount_cents"`
+			Status     string `json:"status"`
+			OccurredAt string `json:"occurred_at"`
+		}{
+			Type:       "payment.captured",
+			PaymentID:  paymentID,
+			Amount:     amount,
+			Status:     "captured",
+			OccurredAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		b, _ := json.Marshal(ev)
+		_, _, _ = bl.Producer.SendMessage(&sarama.ProducerMessage{
+			Topic: "payments_captured",
+			Value: sarama.ByteEncoder(b),
+		})
+	}
+
+	return out, nil
 }
 
 func (bl *bizlogic) RefundPaymentLogic(paymentID string) (model.RefundResponse, error) {
